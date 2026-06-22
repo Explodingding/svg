@@ -44,7 +44,12 @@
       z-index: 10;
     }
     header h1 { font-size: 15px; font-weight: 600; letter-spacing: .3px; }
-    header .filename { color: var(--text-dim); font-size: 12px; }
+    header .filename { color: var(--text-dim); font-size: 12px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Upload button */
+    .btn-upload { background: var(--surface2); color: var(--text); border: 1px dashed var(--border) !important; }
+    .btn-upload:hover { border-color: var(--accent) !important; background: var(--surface); }
+    .btn-upload:disabled { opacity: .6; cursor: not-allowed; }
 
     .btn {
       padding: 6px 14px;
@@ -84,6 +89,7 @@
       flex: 1;
       display: flex;
       overflow: hidden;
+      min-width: 0;
     }
 
     /* ── Controls panel ──────────────────────────────────────────────── */
@@ -197,6 +203,7 @@
       flex: 1;
       display: flex;
       overflow: hidden;
+      min-width: 0;
     }
 
     .preview-pane {
@@ -205,6 +212,7 @@
       flex-direction: column;
       overflow: hidden;
       position: relative;
+      min-width: 0;
     }
     .preview-pane + .preview-pane {
       border-left: 1px solid var(--border);
@@ -373,8 +381,11 @@
 <!-- Top bar -->
 <header>
   <h1>SVG Floor Plan Cleaner</h1>
-  <span class="filename">Cinerglass-Electrical-Panel-Locations-Model-f10-0.svg</span>
+  <span class="filename" id="source-name">Cinerglass-Electrical-Panel-Locations-Model-f10-0.svg</span>
   <div class="flex-row ml-auto">
+    <input type="file" id="file-input" accept=".svg" style="display:none">
+    <button class="btn btn-upload" id="btn-upload-label" title="Load a different SVG file"
+            onclick="document.getElementById('file-input').click()">📂 Load SVG</button>
     <button class="btn btn-outline" id="btn-apply">Apply</button>
     <button class="btn btn-green" id="btn-download">⬇ Download SVG</button>
   </div>
@@ -770,6 +781,42 @@
 
   $('btn-apply').addEventListener('click', applyClean);
   $('btn-download').addEventListener('click', download);
+
+  /* ── File upload ───────────────────────────────────────────────────── */
+  async function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const btn = $('btn-upload-label');
+    const origText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Uploading…';
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+      const r = await fetch('/upload', { method: 'POST', body: form });
+      const data = await r.json();
+      if (!r.ok) { notify('Upload failed: ' + (data.error || r.status)); return; }
+
+      $('source-name').textContent = data.name;
+      notify(`Loaded ${data.name} (${data.size_kb} KB)`);
+
+      origZoom = null;
+      cleanZoom = null;
+      loadOriginal();
+      await applyClean();
+    } catch (err) {
+      notify('Upload error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
+      e.target.value = '';   // allow re-selecting the same file
+    }
+  }
+
+  $('file-input').addEventListener('change', handleFileUpload);
 
   /* ── Init ──────────────────────────────────────────────────────────── */
   (async () => {
