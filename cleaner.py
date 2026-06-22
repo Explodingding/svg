@@ -198,7 +198,7 @@ def _collect(elem, opts: CleanOptions, threshold: float, counter: dict) -> list:
             counter['skipped_small'] += 1
             return []
         if d:
-            results.append(d)
+            results.append((d, elem.get('transform')))
             counter['kept'] += 1
 
     for child in elem:
@@ -256,8 +256,9 @@ def clean_svg(input_path: str, opts: CleanOptions | None = None) -> CleanResult:
         '     xmlns="http://www.w3.org/2000/svg" version="1.1">',
         g_open,
     ]
-    for i, d in enumerate(paths):
-        lines.append(f'    <path id="p{i}" d="{d}"/>')
+    for i, (d, transform) in enumerate(paths):
+        t = f' transform="{transform}"' if transform else ''
+        lines.append(f'    <path id="p{i}" d="{d}"{t}/>')
     lines += ['  </g>', '</svg>']
 
     svg_str = '\n'.join(lines)

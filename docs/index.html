@@ -410,7 +410,7 @@ function collectPaths(elem, opts, threshold, counter) {
       { counter.skippedMiter++; return []; }
     if (d && pathMaxExtent(d) < threshold)
       { counter.skippedSmall++; return []; }
-    if (d) { results.push(d); counter.kept++; }
+    if (d) { results.push([d, elem.getAttribute('transform')]); counter.kept++; }
   }
   for (const child of elem.children)
     results.push(...collectPaths(child, opts, threshold, counter));
@@ -470,7 +470,7 @@ function cleanSvgDoc(svgString, opts) {
     `<svg viewBox="${viewbox}" height="${height}" width="${width}"`,
     `     xmlns="http://www.w3.org/2000/svg" version="1.1">`,
     `  <g${gAttr} style="${style}">`,
-    ...paths.map((d, i) => `    <path id="p${i}" d="${d}"/>`),
+    ...paths.map(([d, t], i) => `    <path id="p${i}" d="${d}"${t ? ` transform="${t}"` : ''}/>`),
     `  </g>`, `</svg>`,
   ];
   const svgOut = lines.join('\n');
