@@ -434,15 +434,53 @@
 
     <div class="ctrl-section">
       <h2>Filter — Small Paths</h2>
-      <div class="ctrl-row">
+
+      <!-- Mode toggle -->
+      <div class="toggle-row" style="margin-bottom:12px;">
+        <span class="toggle-label" style="font-size:12px;">
+          <span id="mode-label-abs" style="color:var(--text-dim)">Absolute</span>
+          <span style="margin:0 6px;color:var(--border)">|</span>
+          <span id="mode-label-rel" style="color:var(--accent);font-weight:600">Relative %</span>
+        </span>
+        <label class="toggle" title="Switch between % of file diagonal and raw units">
+          <input type="checkbox" id="threshold-mode" checked>
+          <span class="slider-toggle"></span>
+        </label>
+      </div>
+
+      <!-- Relative slider -->
+      <div id="row-relative" class="ctrl-row">
         <div class="ctrl-label">
-          <span>Min movement threshold</span>
-          <span class="ctrl-val" id="val-min-movement">20</span>
+          <span>% of coordinate diagonal</span>
+          <span class="ctrl-val" id="val-pct">0.30%</span>
         </div>
-        <input type="range" id="min-movement" min="0" max="300" step="5" value="20">
+        <input type="range" id="min-movement-pct" min="0" max="2" step="0.05" value="0.3">
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
-          <span>0 — keep all</span><span>300 — walls only</span>
+          <span>0% — keep all</span><span>2% — walls only</span>
         </div>
+        <div id="effective-threshold" style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+          Effective: <span id="eff-val">—</span> coord units
+        </div>
+      </div>
+
+      <!-- Absolute slider (hidden by default) -->
+      <div id="row-absolute" class="ctrl-row" style="display:none">
+        <div class="ctrl-label">
+          <span>Min extent (coord units)</span>
+          <span class="ctrl-val" id="val-abs">20</span>
+        </div>
+        <input type="range" id="min-movement" min="0" max="500" step="1" value="20">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
+          <span>0 — keep all</span><span>500 — aggressive</span>
+        </div>
+      </div>
+
+      <!-- Coord space info -->
+      <div id="coord-info" style="background:var(--surface2);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.7;display:none;">
+        <div>ViewBox: <span id="ci-vb" style="color:var(--text)">—</span></div>
+        <div>Internal space: <span id="ci-int" style="color:var(--text)">—</span></div>
+        <div>Diagonal: <span id="ci-diag" style="color:var(--text)">—</span> units</div>
+        <div id="ci-transform-row">Transform: <span id="ci-scale" style="color:var(--text)">—</span></div>
       </div>
     </div>
 
@@ -596,7 +634,10 @@
   }
 
   function getParams() {
+    const relative = $('threshold-mode').checked;
     return {
+      threshold_mode:     relative ? 'relative' : 'absolute',
+      min_movement_pct:   parseFloat($('min-movement-pct').value),
       min_movement:       parseFloat($('min-movement').value),
       remove_arrowheads:  $('remove-arrowheads').checked,
       remove_miter_paths: $('remove-miter').checked,
@@ -605,13 +646,27 @@
     };
   }
 
-  function updateStats(stats) {
-    $('stat-orig-paths').textContent   = stats.original_paths.toLocaleString();
-    $('stat-kept-paths').textContent   = stats.kept_paths.toLocaleString();
+  function updateStats(stats, coordInfo) {
+    $('stat-orig-paths').textContent    = stats.original_paths.toLocaleString();
+    $('stat-kept-paths').textContent    = stats.kept_paths.toLocaleString();
     $('stat-removed-paths').textContent = stats.removed_paths.toLocaleString();
-    $('stat-orig-size').textContent    = stats.original_size_kb + ' KB';
-    $('stat-out-size').textContent     = stats.output_size_kb + ' KB';
-    $('stat-reduction').textContent    = stats.reduction_pct + '%';
+    $('stat-orig-size').textContent     = stats.original_size_kb + ' KB';
+    $('stat-out-size').textContent      = stats.output_size_kb + ' KB';
+    $('stat-reduction').textContent     = stats.reduction_pct + '%';
+
+    if (coordInfo) {
+      $('eff-val').textContent = coordInfo.effective_threshold;
+      $('ci-vb').textContent   = `${coordInfo.viewbox_w} × ${coordInfo.viewbox_h}`;
+      $('ci-int').textContent  = `${coordInfo.internal_w} × ${coordInfo.internal_h}`;
+      $('ci-diag').textContent = coordInfo.diagonal.toLocaleString();
+      $('coord-info').style.display = 'block';
+      if (coordInfo.has_transform) {
+        $('ci-scale').textContent = `scale ${coordInfo.scale_x} × ${coordInfo.scale_y}`;
+        $('ci-transform-row').style.display = '';
+      } else {
+        $('ci-transform-row').style.display = 'none';
+      }
+    }
   }
 
   function getSvgNaturalWidth(svg) {
@@ -678,7 +733,7 @@
       cleanedSvg = data.svg;
       injectSvg(cleanContainer, cleanedSvg);
       injectSvg(overlayClean, cleanedSvg);
-      updateStats(data.stats);
+      updateStats(data.stats, data.coord_info);
       applyZoom(cleanContainer, cleanZoom);
     } catch(e) {
       cleanContainer.innerHTML = '<p style="padding:16px;color:#e05c5c">Error: ' + e.message + '</p>';
@@ -765,10 +820,29 @@
   });
 
   /* ── Control events ────────────────────────────────────────────────── */
-  $('min-movement').addEventListener('input', e => {
-    $('val-min-movement').textContent = e.target.value;
+  function updateModeUI() {
+    const relative = $('threshold-mode').checked;
+    $('row-relative').style.display = relative ? '' : 'none';
+    $('row-absolute').style.display = relative ? 'none' : '';
+    $('mode-label-abs').style.color = relative ? 'var(--text-dim)' : 'var(--accent)';
+    $('mode-label-abs').style.fontWeight = relative ? '' : '600';
+    $('mode-label-rel').style.color = relative ? 'var(--accent)' : 'var(--text-dim)';
+    $('mode-label-rel').style.fontWeight = relative ? '600' : '';
+  }
+
+  $('threshold-mode').addEventListener('change', () => { updateModeUI(); scheduleApply(); });
+
+  $('min-movement-pct').addEventListener('input', e => {
+    $('val-pct').textContent = parseFloat(e.target.value).toFixed(2) + '%';
     scheduleApply();
   });
+
+  $('min-movement').addEventListener('input', e => {
+    $('val-abs').textContent = e.target.value;
+    scheduleApply();
+  });
+
+  updateModeUI();
   $('stroke-width').addEventListener('input', e => {
     $('val-stroke-width').textContent = parseFloat(e.target.value).toFixed(1);
     scheduleApply();

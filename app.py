@@ -30,6 +30,8 @@ DOWNLOAD_PATH = r'C:\Users\lukasz.klimowski\Documents\Cinerglass-walls-simple.sv
 
 def _make_opts(data: dict) -> CleanOptions:
     return CleanOptions(
+        threshold_mode=str(data.get('threshold_mode', 'relative')),
+        min_movement_pct=float(data.get('min_movement_pct', 0.3)),
         min_movement=float(data.get('min_movement', 20)),
         remove_arrowheads=bool(data.get('remove_arrowheads', True)),
         remove_miter_paths=bool(data.get('remove_miter_paths', True)),
@@ -91,7 +93,8 @@ def clean():
             'original_size_kb': round(result.original_size / 1024, 1),
             'output_size_kb': round(result.output_size / 1024, 1),
             'reduction_pct': round(100 * (1 - result.output_size / result.original_size), 1),
-        }
+        },
+        'coord_info': result.coord_info,
     })
 
 
