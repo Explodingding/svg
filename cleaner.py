@@ -182,6 +182,9 @@ def _collect(elem, opts: CleanOptions, threshold: float, counter: dict) -> list:
         style = elem.get('style', '')
         d = elem.get('d', '')
 
+        if elem.get('aria-label') is not None:
+            counter['skipped_arrowhead'] += 1
+            return []
         # Individual fill-rule:nonzero paths are only arrowheads when they have no stroke
         # (text-converted paths also use fill-rule:nonzero but always have stroke:none)
         if opts.remove_arrowheads and 'fill-rule:nonzero' in style and 'stroke:none' in style:
