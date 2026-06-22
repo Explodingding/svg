@@ -376,11 +376,12 @@ function pathMaxExtent(d) {
 }
 
 function isArrowheadGroup(g) {
-  for (const child of g.children) {
-    if (child.tagName.toLowerCase() === 'path') {
-      const style = child.getAttribute('style') || '';
-      if (style.includes('fill-rule:nonzero') || style.includes('stroke-linejoin:miter')) return true;
-    }
+  // Only small groups (≤3 paths) can be arrowheads; whole layers are never arrowheads
+  const pathChildren = [...g.children].filter(c => c.tagName.toLowerCase() === 'path');
+  if (pathChildren.length === 0 || pathChildren.length > 3) return false;
+  for (const child of pathChildren) {
+    const style = child.getAttribute('style') || '';
+    if (style.includes('fill-rule:nonzero') || style.includes('stroke-linejoin:miter')) return true;
   }
   return false;
 }
@@ -399,7 +400,9 @@ function collectPaths(elem, opts, threshold, counter) {
     counter.total++;
     const style = elem.getAttribute('style') || '';
     const d = elem.getAttribute('d') || '';
-    if (opts.removeArrowheads && style.includes('fill-rule:nonzero'))
+    // Only remove fill-rule:nonzero paths that also have stroke:none (text glyphs use
+    // fill-rule:nonzero too, but always have stroke:none; real arrowheads have a stroke)
+    if (opts.removeArrowheads && style.includes('fill-rule:nonzero') && style.includes('stroke:none'))
       { counter.skippedArrowhead++; return []; }
     if (opts.removeMiter && style.includes('stroke-linejoin:miter'))
       { counter.skippedMiter++; return []; }

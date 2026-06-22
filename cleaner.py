@@ -146,6 +146,13 @@ def _internal_diagonal(root) -> float:
 # ── Filter helpers ─────────────────────────────────────────────────────────────
 
 def _is_arrowhead_group(elem) -> bool:
+    # Only small groups (≤3 paths) can be arrowheads; whole layers are never arrowheads
+    path_count = sum(
+        1 for c in elem
+        if (c.tag.split('}')[-1] if '}' in c.tag else c.tag) == 'path'
+    )
+    if path_count == 0 or path_count > 3:
+        return False
     for child in elem:
         tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
         if tag == 'path':
@@ -175,7 +182,9 @@ def _collect(elem, opts: CleanOptions, threshold: float, counter: dict) -> list:
         style = elem.get('style', '')
         d = elem.get('d', '')
 
-        if opts.remove_arrowheads and 'fill-rule:nonzero' in style:
+        # Individual fill-rule:nonzero paths are only arrowheads when they have no stroke
+        # (text-converted paths also use fill-rule:nonzero but always have stroke:none)
+        if opts.remove_arrowheads and 'fill-rule:nonzero' in style and 'stroke:none' in style:
             counter['skipped_arrowhead'] += 1
             return []
         if opts.remove_miter_paths and 'stroke-linejoin:miter' in style:
