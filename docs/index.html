@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SVG Floor Plan Cleaner</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1a1f; --surface: #23232a; --surface2: #2c2c35;
+      --border: #3a3a48; --accent: #5b8cf5; --green: #4caf7d;
+      --red: #e05c5c; --text: #e8e8f0; --text-dim: #888899;
+      --panel-w: 300px;
+    }
+
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px;
+      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 10px 16px; display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 15px; font-weight: 600; }
+    .filename { color: var(--text-dim); font-size: 12px; max-width: 300px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ml-auto { margin-left: auto; }
+    .flex-row { display: flex; gap: 8px; align-items: center; }
+
+    .btn { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer;
+      font-size: 13px; font-weight: 500; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-green   { background: var(--green); color: #fff; }
+    .btn-upload  { background: var(--surface2); color: var(--text); border: 1px dashed var(--border) !important; }
+    .btn-upload:hover { border-color: var(--accent) !important; }
+
+    /* ── Stats bar ── */
+    #stats-bar {
+      background: var(--surface2); border-bottom: 1px solid var(--border);
+      padding: 6px 16px; display: flex; gap: 24px; flex-shrink: 0; font-size: 12px;
+    }
+    .stat { display: flex; flex-direction: column; gap: 2px; }
+    .stat-label { color: var(--text-dim); }
+    .stat-value { font-weight: 600; font-size: 13px; }
+    .stat-value.good { color: var(--green); }
+    .stat-value.warn { color: #f0b44c; }
+    .auto-apply-row { display: flex; align-items: center; gap: 8px; font-size: 12px;
+      color: var(--text-dim); margin-left: auto; }
+
+    /* ── Layout ── */
+    .main { flex: 1; display: flex; overflow: hidden; min-width: 0; }
+
+    /* ── Controls ── */
+    #controls {
+      width: var(--panel-w); background: var(--surface);
+      border-right: 1px solid var(--border); overflow-y: auto;
+      flex-shrink: 0; padding: 16px; display: flex; flex-direction: column; gap: 20px;
+    }
+    .ctrl-section h2 {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .8px; color: var(--text-dim); margin-bottom: 12px;
+    }
+    .ctrl-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .ctrl-row:last-child { margin-bottom: 0; }
+    .ctrl-label { display: flex; justify-content: space-between; font-size: 13px; }
+    .ctrl-val { font-weight: 600; color: var(--accent); min-width: 42px; text-align: right; }
+    input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+    input[type=color] { width: 44px; height: 30px; border: 1px solid var(--border);
+      border-radius: 6px; cursor: pointer; background: none; padding: 2px; }
+    .divider { border: none; border-top: 1px solid var(--border); }
+
+    .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider-toggle { position: absolute; inset: 0; background: var(--border);
+      border-radius: 20px; cursor: pointer; transition: background .2s; }
+    .slider-toggle::before { content: ''; position: absolute; width: 14px; height: 14px;
+      left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .2s; }
+    .toggle input:checked + .slider-toggle { background: var(--accent); }
+    .toggle input:checked + .slider-toggle::before { transform: translateX(16px); }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .toggle-label { font-size: 13px; }
+
+    /* ── Previews ── */
+    #previews { flex: 1; display: flex; overflow: hidden; min-width: 0; }
+    .preview-pane { flex: 1; display: flex; flex-direction: column;
+      overflow: hidden; position: relative; min-width: 0; }
+    .preview-pane + .preview-pane { border-left: 1px solid var(--border); }
+
+    .pane-header { background: var(--surface2); border-bottom: 1px solid var(--border);
+      padding: 7px 12px; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .pane-title { font-size: 12px; font-weight: 600; }
+    .badge { font-size: 10px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+    .badge-orig  { background: #3a4060; color: #8899ee; }
+    .badge-clean { background: #1f4030; color: var(--green); }
+
+    .pane-body { flex: 1; overflow: hidden; position: relative; background: #f8f8f8; }
+    .pane-body.dark-bg { background: #1a1a1f; }
+
+    .svg-container { width: 100%; height: 100%; overflow: auto; display: flex;
+      align-items: flex-start; justify-content: flex-start; }
+    .svg-container svg, .svg-container img { display: block; flex-shrink: 0; }
+
+    /* Drop zone */
+    .drop-zone {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      color: var(--text-dim); font-size: 13px; cursor: pointer;
+    }
+    .drop-zone.over { background: rgba(91,140,245,.08); color: var(--accent); }
+    .drop-icon { font-size: 40px; opacity: .4; }
+    .drop-hint { font-size: 11px; opacity: .6; }
+
+    /* Loading overlay */
+    .loading-overlay { position: absolute; inset: 0; background: rgba(26,26,31,.7);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; color: var(--text-dim); backdrop-filter: blur(2px); z-index: 5; }
+    .loading-overlay.hidden { display: none; }
+    .spinner { width: 20px; height: 20px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Zoom controls */
+    .zoom-controls { position: absolute; bottom: 10px; right: 10px; display: flex; gap: 4px; z-index: 2; }
+    .zoom-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text);
+      width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 15px;
+      display: flex; align-items: center; justify-content: center; }
+    .zoom-btn:hover { background: var(--surface2); }
+
+    /* View tabs */
+    .view-tabs { display: flex; border-bottom: 1px solid var(--border);
+      background: var(--surface); flex-shrink: 0; }
+    .view-tab { padding: 7px 14px; font-size: 12px; cursor: pointer; border: none;
+      background: none; color: var(--text-dim); border-bottom: 2px solid transparent; }
+    .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Overlay */
+    #overlay-pane { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+    #overlay-pane.visible { display: flex; }
+    .overlay-wrapper { position: relative; flex: 1; overflow: auto; background: #f8f8f8; }
+    .overlay-wrapper.dark-bg { background: #1a1a1f; }
+    .overlay-layer { position: absolute; top: 0; left: 0; pointer-events: none; }
+    .overlay-orig  { opacity: .2; }
+    .overlay-clean { opacity: 1; }
+
+    /* Coord info */
+    .coord-info-box { background: var(--surface2); border-radius: 6px; padding: 8px 10px;
+      font-size: 11px; color: var(--text-dim); line-height: 1.8; display: none; }
+
+    /* Notification */
+    #notif { position: fixed; bottom: 16px; right: 16px; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px;
+      font-size: 13px; opacity: 0; transform: translateY(8px);
+      transition: opacity .3s, transform .3s; pointer-events: none; z-index: 100; }
+    #notif.show { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>SVG Floor Plan Cleaner</h1>
+  <span class="filename" id="source-name">No file loaded</span>
+  <div class="flex-row ml-auto">
+    <input type="file" id="file-input" accept=".svg" style="display:none">
+    <button class="btn btn-upload" onclick="document.getElementById('file-input').click()">📂 Load SVG</button>
+    <button class="btn btn-green" id="btn-download" disabled>⬇ Download SVG</button>
+  </div>
+</header>
+
+<div id="stats-bar">
+  <div class="stat"><span class="stat-label">Original paths</span><span class="stat-value" id="stat-orig-paths">—</span></div>
+  <div class="stat"><span class="stat-label">Kept paths</span><span class="stat-value good" id="stat-kept-paths">—</span></div>
+  <div class="stat"><span class="stat-label">Removed paths</span><span class="stat-value warn" id="stat-removed-paths">—</span></div>
+  <div class="stat"><span class="stat-label">Original size</span><span class="stat-value" id="stat-orig-size">—</span></div>
+  <div class="stat"><span class="stat-label">Output size</span><span class="stat-value good" id="stat-out-size">—</span></div>
+  <div class="stat"><span class="stat-label">Size reduction</span><span class="stat-value good" id="stat-reduction">—</span></div>
+  <div class="auto-apply-row">
+    <label class="toggle" title="Auto-apply on change">
+      <input type="checkbox" id="auto-apply" checked>
+      <span class="slider-toggle"></span>
+    </label>
+    Auto-apply
+  </div>
+</div>
+
+<div class="main">
+  <div id="controls">
+
+    <div class="ctrl-section">
+      <h2>Filter — Small Paths</h2>
+      <div class="toggle-row" style="margin-bottom:12px;">
+        <span class="toggle-label" style="font-size:12px;">
+          <span id="mode-label-abs" style="color:var(--text-dim)">Absolute</span>
+          <span style="margin:0 6px;color:var(--border)">|</span>
+          <span id="mode-label-rel" style="color:var(--accent);font-weight:600">Relative %</span>
+        </span>
+        <label class="toggle">
+          <input type="checkbox" id="threshold-mode" checked>
+          <span class="slider-toggle"></span>
+        </label>
+      </div>
+
+      <div id="row-relative" class="ctrl-row">
+        <div class="ctrl-label">
+          <span>% of coordinate diagonal</span>
+          <span class="ctrl-val" id="val-pct">0.30%</span>
+        </div>
+        <input type="range" id="min-movement-pct" min="0" max="2" step="0.05" value="0.3">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
+          <span>0% — keep all</span><span>2% — walls only</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+          Effective: <span id="eff-val">—</span> coord units
+        </div>
+      </div>
+
+      <div id="row-absolute" class="ctrl-row" style="display:none">
+        <div class="ctrl-label">
+          <span>Min extent (coord units)</span>
+          <span class="ctrl-val" id="val-abs">20</span>
+        </div>
+        <input type="range" id="min-movement" min="0" max="500" step="1" value="20">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim)">
+          <span>0 — keep all</span><span>500 — aggressive</span>
+        </div>
+      </div>
+
+      <div class="coord-info-box" id="coord-info">
+        <div>ViewBox: <span id="ci-vb" style="color:var(--text)">—</span></div>
+        <div>Internal space: <span id="ci-int" style="color:var(--text)">—</span></div>
+        <div>Diagonal: <span id="ci-diag" style="color:var(--text)">—</span> units</div>
+        <div id="ci-transform-row">Transform scale: <span id="ci-scale" style="color:var(--text)">—</span></div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="ctrl-section">
+      <h2>Filter — Element Types</h2>
+      <div class="toggle-row">
+        <span class="toggle-label">Remove arrowheads <span style="font-size:11px;color:var(--text-dim)">(filled triangles)</span></span>
+        <label class="toggle"><input type="checkbox" id="remove-arrowheads" checked><span class="slider-toggle"></span></label>
+      </div>
+      <div class="toggle-row">
+        <span class="toggle-label">Remove miter-join paths</span>
+        <label class="toggle"><input type="checkbox" id="remove-miter" checked><span class="slider-toggle"></span></label>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="ctrl-section">
+      <h2>Output Style</h2>
+      <div class="ctrl-row">
+        <div class="ctrl-label"><span>Stroke width</span><span class="ctrl-val" id="val-stroke-width">1.0</span></div>
+        <input type="range" id="stroke-width" min="0.2" max="5" step="0.2" value="1">
+      </div>
+      <div class="ctrl-row">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="flex:1;font-size:13px;">Stroke color</span>
+          <input type="color" id="stroke-color" value="#000000">
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="ctrl-section">
+      <h2>Preview Background</h2>
+      <div class="toggle-row">
+        <span class="toggle-label">Dark background</span>
+        <label class="toggle"><input type="checkbox" id="dark-bg"><span class="slider-toggle"></span></label>
+      </div>
+    </div>
+
+  </div><!-- /controls -->
+
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;">
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="split">Split view</button>
+      <button class="view-tab" data-view="overlay">Overlay diff</button>
+    </div>
+
+    <div id="split-pane" style="flex:1;display:flex;overflow:hidden;">
+
+      <div class="preview-pane">
+        <div class="pane-header">
+          <span class="pane-title">Original</span>
+          <span class="badge badge-orig">SOURCE</span>
+        </div>
+        <div class="pane-body" id="orig-body">
+          <div class="svg-container" id="orig-container">
+            <div class="drop-zone" id="drop-zone">
+              <div class="drop-icon">📄</div>
+              <div>Drop an SVG file here</div>
+              <div class="drop-hint">or use the Load SVG button above</div>
+            </div>
+          </div>
+          <div class="zoom-controls">
+            <button class="zoom-btn" data-pane="orig" data-dir="+">+</button>
+            <button class="zoom-btn" data-pane="orig" data-dir="0">⊡</button>
+            <button class="zoom-btn" data-pane="orig" data-dir="-">−</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="preview-pane">
+        <div class="pane-header">
+          <span class="pane-title">Cleaned</span>
+          <span class="badge badge-clean">OUTPUT</span>
+        </div>
+        <div class="pane-body" id="clean-body">
+          <div class="svg-container" id="clean-container"></div>
+          <div class="loading-overlay hidden" id="clean-loading">
+            <div class="spinner"></div>Processing…
+          </div>
+          <div class="zoom-controls">
+            <button class="zoom-btn" data-pane="clean" data-dir="+">+</button>
+            <button class="zoom-btn" data-pane="clean" data-dir="0">⊡</button>
+            <button class="zoom-btn" data-pane="clean" data-dir="-">−</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="overlay-pane">
+      <div class="pane-header"><span class="pane-title">Overlay diff — original (faded) + cleaned</span></div>
+      <div class="overlay-wrapper" id="overlay-wrapper">
+        <div class="overlay-layer overlay-orig"  id="overlay-orig"></div>
+        <div class="overlay-layer overlay-clean" id="overlay-clean"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="notif"></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   SVG CLEANER — pure client-side port of cleaner.py
+   ══════════════════════════════════════════════════════════════ */
+
+function pathMaxExtent(d) {
+  const tokens = d.match(/[MmHhVvLlZzCcSsQqTtAa]|[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?/g) || [];
+  let xs = [], ys = [], cx = 0, cy = 0, cmd = null, i = 0;
+
+  function nextNum() {
+    while (i < tokens.length && !/^[-+]?\d/.test(tokens[i])) i++;
+    return i < tokens.length ? parseFloat(tokens[i++]) : null;
+  }
+
+  while (i < tokens.length) {
+    const t = tokens[i++];
+    if (/^[MmHhVvLlZzCcSsQqTtAa]$/.test(t)) { cmd = t; } else { i--; }
+
+    if      (cmd==='M'||cmd==='L') { const x=nextNum(),y=nextNum(); if(x==null)break; cx=x;cy=y;xs.push(cx);ys.push(cy); }
+    else if (cmd==='m'||cmd==='l') { const x=nextNum(),y=nextNum(); if(x==null)break; cx+=x;cy+=y;xs.push(cx);ys.push(cy); }
+    else if (cmd==='H') { const x=nextNum(); if(x==null)break; cx=x;xs.push(cx); }
+    else if (cmd==='h') { const x=nextNum(); if(x==null)break; cx+=x;xs.push(cx); }
+    else if (cmd==='V') { const y=nextNum(); if(y==null)break; cy=y;ys.push(cy); }
+    else if (cmd==='v') { const y=nextNum(); if(y==null)break; cy+=y;ys.push(cy); }
+    else if (cmd==='Z'||cmd==='z') { /* nothing */ }
+    else { while (i<tokens.length && /^[-+]?\d/.test(tokens[i])) i++; }
+  }
+  if (!xs.length) xs=[0]; if (!ys.length) ys=[0];
+  return Math.max(Math.max(...xs)-Math.min(...xs), Math.max(...ys)-Math.min(...ys));
+}
+
+function isArrowheadGroup(g) {
+  for (const child of g.children) {
+    if (child.tagName.toLowerCase() === 'path') {
+      const style = child.getAttribute('style') || '';
+      if (style.includes('fill-rule:nonzero') || style.includes('stroke-linejoin:miter')) return true;
+    }
+  }
+  return false;
+}
+
+function collectPaths(elem, opts, threshold, counter) {
+  const tag = elem.tagName.toLowerCase().replace(/^.*:/, '');
+  if (['namedview','metadata','defs','text','tspan','title','desc'].includes(tag)) return [];
+  if (tag === 'g' && opts.removeArrowheads && isArrowheadGroup(elem)) {
+    for (const c of elem.children)
+      if (c.tagName.toLowerCase()==='path') counter.skippedArrowhead++;
+    return [];
+  }
+
+  const results = [];
+  if (tag === 'path') {
+    counter.total++;
+    const style = elem.getAttribute('style') || '';
+    const d = elem.getAttribute('d') || '';
+    if (opts.removeArrowheads && style.includes('fill-rule:nonzero'))
+      { counter.skippedArrowhead++; return []; }
+    if (opts.removeMiter && style.includes('stroke-linejoin:miter'))
+      { counter.skippedMiter++; return []; }
+    if (d && pathMaxExtent(d) < threshold)
+      { counter.skippedSmall++; return []; }
+    if (d) { results.push(d); counter.kept++; }
+  }
+  for (const child of elem.children)
+    results.push(...collectPaths(child, opts, threshold, counter));
+  return results;
+}
+
+function parseViewBox(root) {
+  const vb = root.getAttribute('viewBox') || '';
+  const parts = vb.trim().split(/[\s,]+/).map(Number);
+  if (parts.length === 4 && parts.every(n => !isNaN(n))) return parts;
+  return [0, 0,
+    parseFloat(root.getAttribute('width')  || 1588),
+    parseFloat(root.getAttribute('height') || 1122)];
+}
+
+function rootGroupInfo(root) {
+  for (const child of root.children) {
+    const tag = child.tagName.toLowerCase().replace(/^.*:/, '');
+    if (tag === 'g') {
+      const t = child.getAttribute('transform') || '';
+      const m = t.match(/matrix\(\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)\s*,\s*([-\d.eE+]+)/);
+      if (m) return { transform: t, sx: Math.abs(parseFloat(m[1])), sy: Math.abs(parseFloat(m[4])) };
+      return { transform: t || null, sx: 1, sy: 1 };
+    }
+  }
+  return { transform: null, sx: 1, sy: 1 };
+}
+
+function cleanSvgDoc(svgString, opts) {
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(svgString, 'image/svg+xml');
+  const root   = doc.documentElement;
+
+  const [,, vbW, vbH] = parseViewBox(root);
+  const { transform: rootTransform, sx, sy } = rootGroupInfo(root);
+  const intW = sx > 0 ? vbW / sx : vbW;
+  const intH = sy > 0 ? vbH / sy : vbH;
+  const diagonal = Math.sqrt(intW**2 + intH**2);
+
+  const threshold = opts.thresholdMode === 'relative'
+    ? opts.minMovementPct / 100 * diagonal
+    : opts.minMovement;
+
+  const counter = { total:0, kept:0, skippedArrowhead:0, skippedMiter:0, skippedSmall:0 };
+  const paths   = collectPaths(root, opts, threshold, counter);
+
+  const viewbox  = root.getAttribute('viewBox') || `0 0 ${vbW} ${vbH}`;
+  const width    = root.getAttribute('width')   || String(vbW);
+  const height   = root.getAttribute('height')  || String(vbH);
+  const style    = `fill:none;stroke:${opts.strokeColor};stroke-width:${opts.strokeWidth};` +
+                   `stroke-linecap:round;stroke-linejoin:round;` +
+                   `stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1`;
+
+  const gAttr = rootTransform ? ` transform="${rootTransform}"` : '';
+  const lines = [
+    `<?xml version="1.0" encoding="UTF-8" standalone="no"?>`,
+    `<svg viewBox="${viewbox}" height="${height}" width="${width}"`,
+    `     xmlns="http://www.w3.org/2000/svg" version="1.1">`,
+    `  <g${gAttr} style="${style}">`,
+    ...paths.map((d, i) => `    <path id="p${i}" d="${d}"/>`),
+    `  </g>`, `</svg>`,
+  ];
+  const svgOut = lines.join('\n');
+
+  return {
+    svg: svgOut,
+    stats: {
+      originalPaths:  counter.total,
+      keptPaths:      counter.kept,
+      removedPaths:   counter.total - counter.kept,
+      originalSizeKb: null,   // filled by caller
+      outputSizeKb:   Math.round(new Blob([svgOut]).size / 1024 * 10) / 10,
+      reductionPct:   null,
+    },
+    coordInfo: {
+      viewboxW: Math.round(vbW * 100) / 100,
+      viewboxH: Math.round(vbH * 100) / 100,
+      internalW: Math.round(intW),
+      internalH: Math.round(intH),
+      diagonal: Math.round(diagonal * 10) / 10,
+      effectiveThreshold: Math.round(threshold * 100) / 100,
+      hasTransform: !!rootTransform,
+      scaleX: Math.round(sx * 10000) / 10000,
+      scaleY: Math.round(sy * 10000) / 10000,
+    },
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════
+   UI STATE
+   ══════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+let originalSvgString = null;
+let originalFileName  = null;
+let originalSizeBytes = 0;
+let cleanedSvgString  = null;
+let origZoom  = null, cleanZoom  = null;
+let autoApplyTimer = null;
+
+/* ── Helpers ── */
+function notify(msg, ms = 2500) {
+  const el = $('notif');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function getOpts() {
+  const relative = $('threshold-mode').checked;
+  return {
+    thresholdMode:   relative ? 'relative' : 'absolute',
+    minMovementPct:  parseFloat($('min-movement-pct').value),
+    minMovement:     parseFloat($('min-movement').value),
+    removeArrowheads: $('remove-arrowheads').checked,
+    removeMiter:      $('remove-miter').checked,
+    strokeWidth:      parseFloat($('stroke-width').value),
+    strokeColor:      $('stroke-color').value,
+  };
+}
+
+function updateStats(stats, coordInfo, origBytes) {
+  $('stat-orig-paths').textContent    = stats.originalPaths.toLocaleString();
+  $('stat-kept-paths').textContent    = stats.keptPaths.toLocaleString();
+  $('stat-removed-paths').textContent = stats.removedPaths.toLocaleString();
+  $('stat-orig-size').textContent     = origBytes ? Math.round(origBytes/1024*10)/10 + ' KB' : '—';
+  $('stat-out-size').textContent      = stats.outputSizeKb + ' KB';
+  if (origBytes) {
+    const pct = Math.round(100*(1 - stats.outputSizeKb/(origBytes/1024))*10)/10;
+    $('stat-reduction').textContent = pct + '%';
+  }
+  if (coordInfo) {
+    $('eff-val').textContent  = coordInfo.effectiveThreshold;
+    $('ci-vb').textContent    = `${coordInfo.viewboxW} × ${coordInfo.viewboxH}`;
+    $('ci-int').textContent   = `${coordInfo.internalW} × ${coordInfo.internalH}`;
+    $('ci-diag').textContent  = coordInfo.diagonal.toLocaleString();
+    $('coord-info').style.display = 'block';
+    if (coordInfo.hasTransform) {
+      $('ci-scale').textContent = `${coordInfo.scaleX} × ${coordInfo.scaleY}`;
+      $('ci-transform-row').style.display = '';
+    } else {
+      $('ci-transform-row').style.display = 'none';
+    }
+  }
+}
+
+/* ── Zoom ── */
+function zoomStep(container, currentPx, dir) {
+  const el = container.querySelector('svg, img');
+  if (!el) return null;
+  const fitW = container.clientWidth;
+  const base = currentPx ?? el.getBoundingClientRect().width ?? fitW;
+  if (dir === '0') return null;
+  if (dir === '+') return Math.min(base * 1.35, 12000);
+  if (dir === '-') { const n = base / 1.35; return n <= fitW * 1.05 ? null : n; }
+  return null;
+}
+function applyZoom(container, pxWidth) {
+  const el = container.querySelector('svg, img');
+  if (!el) return;
+  el.style.width  = pxWidth == null ? '100%' : pxWidth + 'px';
+  el.style.height = 'auto';
+}
+
+/* ── Inject SVG ── */
+function injectSvg(container, svgStr) {
+  const parser = new DOMParser();
+  const doc    = parser.parseFromString(svgStr, 'image/svg+xml');
+  const svgEl  = doc.documentElement;
+  svgEl.style.width = '100%'; svgEl.style.height = 'auto'; svgEl.style.display = 'block';
+  container.innerHTML = '';
+  container.appendChild(svgEl);
+}
+
+function showOriginal(svgStr) {
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgStr);
+  img.style.cssText = 'width:100%;height:auto;display:block;';
+  $('orig-container').innerHTML = '';
+  $('orig-container').appendChild(img);
+  // overlay
+  const img2 = new Image();
+  img2.src = img.src;
+  img2.style.cssText = 'width:100%;height:auto;display:block;';
+  $('overlay-orig').innerHTML = '';
+  $('overlay-orig').appendChild(img2);
+}
+
+/* ── Apply cleaning ── */
+function applyClean() {
+  if (!originalSvgString) return;
+  $('clean-loading').classList.remove('hidden');
+  // Use setTimeout to let the loading overlay render before the heavy work
+  setTimeout(() => {
+    try {
+      const result = cleanSvgDoc(originalSvgString, getOpts());
+      cleanedSvgString = result.svg;
+      injectSvg($('clean-container'), cleanedSvgString);
+      applyZoom($('clean-container'), cleanZoom);
+      // overlay
+      injectSvg($('overlay-clean'), cleanedSvgString);
+      updateStats(result.stats, result.coordInfo, originalSizeBytes);
+      $('btn-download').disabled = false;
+    } catch(e) {
+      $('clean-container').innerHTML = `<p style="padding:16px;color:var(--red)">${e.message}</p>`;
+    } finally {
+      $('clean-loading').classList.add('hidden');
+    }
+  }, 30);
+}
+
+function scheduleApply() {
+  if (!$('auto-apply').checked || !originalSvgString) return;
+  clearTimeout(autoApplyTimer);
+  autoApplyTimer = setTimeout(applyClean, 400);
+}
+
+/* ── File loading ── */
+function loadSvgString(str, name, sizeBytes) {
+  originalSvgString  = str;
+  originalFileName   = name;
+  originalSizeBytes  = sizeBytes;
+  $('source-name').textContent = name;
+  origZoom = null; cleanZoom = null;
+  showOriginal(str);
+  applyClean();
+}
+
+async function handleFile(file) {
+  if (!file || !file.name.toLowerCase().endsWith('.svg')) {
+    notify('Please select an SVG file'); return;
+  }
+  const text = await file.text();
+  loadSvgString(text, file.name, file.size);
+}
+
+/* ── Download ── */
+function download() {
+  if (!cleanedSvgString) return;
+  const stem = (originalFileName || 'output').replace(/\.svg$/i, '');
+  const blob = new Blob([cleanedSvgString], { type: 'image/svg+xml' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: stem + '-clean.svg' });
+  a.click();
+  URL.revokeObjectURL(url);
+  notify('Downloaded ✓');
+}
+
+/* ── Drop zone ── */
+const dropZone = $('drop-zone');
+$('orig-container').addEventListener('dragover', e => { e.preventDefault(); dropZone?.classList.add('over'); });
+$('orig-container').addEventListener('dragleave', () => dropZone?.classList.remove('over'));
+$('orig-container').addEventListener('drop', e => {
+  e.preventDefault(); dropZone?.classList.remove('over');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+/* ── File input ── */
+$('file-input').addEventListener('change', e => {
+  handleFile(e.target.files[0]);
+  e.target.value = '';
+});
+
+/* ── View tabs ── */
+document.querySelectorAll('.view-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const v = tab.dataset.view;
+    $('split-pane').style.display   = v==='split'   ? 'flex' : 'none';
+    $('overlay-pane').style.display = v==='overlay' ? 'flex' : 'none';
+  });
+});
+
+/* ── Zoom buttons ── */
+document.querySelectorAll('.zoom-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const p = btn.dataset.pane, d = btn.dataset.dir;
+    const cont = p==='orig' ? $('orig-container') : $('clean-container');
+    if (p==='orig') { origZoom  = zoomStep(cont, origZoom,  d); applyZoom(cont, origZoom); }
+    else            { cleanZoom = zoomStep(cont, cleanZoom, d); applyZoom(cont, cleanZoom); }
+  });
+});
+
+/* ── Controls ── */
+function updateModeUI() {
+  const rel = $('threshold-mode').checked;
+  $('row-relative').style.display = rel ? '' : 'none';
+  $('row-absolute').style.display = rel ? 'none' : '';
+  $('mode-label-abs').style.cssText = rel ? 'color:var(--text-dim)' : 'color:var(--accent);font-weight:600';
+  $('mode-label-rel').style.cssText = rel ? 'color:var(--accent);font-weight:600' : 'color:var(--text-dim)';
+}
+$('threshold-mode').addEventListener('change', () => { updateModeUI(); scheduleApply(); });
+$('min-movement-pct').addEventListener('input', e => {
+  $('val-pct').textContent = parseFloat(e.target.value).toFixed(2) + '%'; scheduleApply();
+});
+$('min-movement').addEventListener('input', e => { $('val-abs').textContent = e.target.value; scheduleApply(); });
+$('stroke-width').addEventListener('input', e => {
+  $('val-stroke-width').textContent = parseFloat(e.target.value).toFixed(1); scheduleApply();
+});
+['remove-arrowheads','remove-miter','stroke-color'].forEach(id => $(id).addEventListener('change', scheduleApply));
+$('dark-bg').addEventListener('change', () => {
+  const dark = $('dark-bg').checked;
+  [$('orig-body'), $('clean-body')].forEach(el => el.classList.toggle('dark-bg', dark));
+  $('overlay-wrapper').classList.toggle('dark-bg', dark);
+});
+$('btn-download').addEventListener('click', download);
+updateModeUI();
+</script>
+</body>
+</html>
