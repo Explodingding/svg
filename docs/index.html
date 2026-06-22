@@ -400,10 +400,11 @@ function collectPaths(elem, opts, threshold, counter) {
     counter.total++;
     const style = elem.getAttribute('style') || '';
     const d = elem.getAttribute('d') || '';
-    if (elem.hasAttribute('aria-label')) { counter.skippedArrowhead++; return []; }
-    // Only remove fill-rule:nonzero paths that also have stroke:none (text glyphs use
-    // fill-rule:nonzero too, but always have stroke:none; real arrowheads have a stroke)
-    if (opts.removeArrowheads && style.includes('fill-rule:nonzero') && style.includes('stroke:none'))
+    // Paths with no stroke contribute nothing to the line-art output (fill is overridden
+    // to none anyway). This catches text glyphs, arrowhead fill shapes, decorative fills.
+    if (style.includes('stroke:none') || elem.hasAttribute('aria-label'))
+      { counter.skippedArrowhead++; return []; }
+    if (opts.removeArrowheads && style.includes('fill-rule:nonzero'))
       { counter.skippedArrowhead++; return []; }
     if (opts.removeMiter && style.includes('stroke-linejoin:miter'))
       { counter.skippedMiter++; return []; }

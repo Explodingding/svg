@@ -182,12 +182,13 @@ def _collect(elem, opts: CleanOptions, threshold: float, counter: dict) -> list:
         style = elem.get('style', '')
         d = elem.get('d', '')
 
-        if elem.get('aria-label') is not None:
+        # Paths with no stroke contribute nothing to the line-art output (we override
+        # fill to none anyway), so skip them regardless of their fill-rule.
+        # This catches text glyphs, arrowhead fill shapes, and other decorative fills.
+        if 'stroke:none' in style or elem.get('aria-label') is not None:
             counter['skipped_arrowhead'] += 1
             return []
-        # Individual fill-rule:nonzero paths are only arrowheads when they have no stroke
-        # (text-converted paths also use fill-rule:nonzero but always have stroke:none)
-        if opts.remove_arrowheads and 'fill-rule:nonzero' in style and 'stroke:none' in style:
+        if opts.remove_arrowheads and 'fill-rule:nonzero' in style:
             counter['skipped_arrowhead'] += 1
             return []
         if opts.remove_miter_paths and 'stroke-linejoin:miter' in style:
